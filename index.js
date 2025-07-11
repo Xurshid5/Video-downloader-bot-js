@@ -5,6 +5,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const express = require('express');
+const downloadsPath = os.tmpdir(); // TEMP katalogga yoziladi!
+
+
+
+
 
 // Telegram botni ishga tushirish
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -22,7 +27,12 @@ bot.on('text', async (ctx) => {
     return ctx.reply('❗ Iltimos, haqiqiy video link yuboring.');
   }
 
-  const downloadsPath = path.join(os.homedir(), 'Downloads');
+//   const downloadsPath = path.join(os.homedir(), 'Downloads');
+
+
+
+
+const downloadsPath = os.tmpdir(); // Render uchun xavfsiz joy
   const fileName = `video_${Date.now()}.mp4`;
   const outputPath = path.join(downloadsPath, fileName);
 
