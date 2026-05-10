@@ -9,42 +9,56 @@ const express = require('express');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 
-// Render uchun port
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot is running...'));
-app.listen(PORT, () => console.log(`Port: ${PORT}`));
+// Render uchun Web Server
+app.get('/', (req, res) => res.send('Bot is Online!'));
+app.listen(process.env.PORT || 3000);
 
-bot.start((ctx) => ctx.reply('Video linkini yuboring!'));
+bot.start((ctx) => ctx.reply('🎬 Video havolasini yuboring (YouTube, TikTok, Instagram).'));
 
 bot.on('text', async (ctx) => {
     const url = ctx.message.text;
     if (!url.startsWith('http')) return;
 
-    const outputPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
-    const loading = await ctx.reply('⏳ Jarayon boshlandi...');
-
+    const tempDir = os.tmpdir();
+    const fileName = `vid_${Date.now()}.mp4`;
+    const outputPath = path.join(tempDir, fileName);
+    
+    let loadingMsg;
     try {
-        // MUHIM: Bu sozlamalar videoni kichikroq formatda (Telegram ko'tara oladigan) yuklaydi
+        loadingMsg = await ctx.reply('⏳ Yuklab olinmoqda, kuting...');
+
+        // yt-dlp sozlamalari
         await ytdlp(url, {
             output: outputPath,
-            format: 'best[ext=mp4]/best', // Faqat tayyor MP4 qidiradi (birlashtirish shart emas)
+            // MP4 formatini tanlash (Renderda ffmpeg yo'qligi sababli muhim)
+            format: 'best[ext=mp4]/best', 
             noCheckCertificates: true,
-            maxFilesize: '45M', // 50MB dan oshib ketmasligi uchun
+            noWarnings: true,
+            addHeader: ['referer:youtube.com', 'user-agent:googlebot'],
+            maxFilesize: '45M' // Telegram limit
         });
 
         if (fs.existsSync(outputPath)) {
-            await ctx.replyWithVideo({ source: outputPath });
-            fs.unlinkSync(outputPath);
+            const stats = fs.statSync(outputPath);
+            if (stats.size > 50 * 1024 * 1024) {
+                await ctx.reply('❌ Video juda katta (50MB+).');
+            } else {
+                await ctx.replyWithVideo({ source: outputPath });
+            }
+            fs.unlinkSync(outputPath); // Faylni o'chirish
         } else {
-            throw new Error('Fayl yaratilmadi');
+            throw new Error('Fayl topilmadi');
         }
 
     } catch (error) {
         console.error('XATO:', error.message);
-        ctx.reply(`❌ Xatolik: Video juda katta yoki bu saytdan yuklab bo'lmaydi.`);
+        ctx.reply('❌ Yuklab bo‘lmadi. Sababi: Video juda katta yoki sayt bloklagan.');
     } finally {
-        ctx.telegram.deleteMessage(ctx.chat.id, loading.message_id).catch(() => {});
+        if (loadingMsg) {
+            ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
+        }
     }
 });
 
 bot.launch();
+console.log('✅ Bot ishga tushdi!');
