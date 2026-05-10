@@ -6,70 +6,45 @@ const path = require('path');
 const os = require('os');
 const express = require('express');
 
-// Botni init qilish
 const bot = new Telegraf(process.env.BOT_TOKEN);
-
-// Server (Render o'chib qolmasligi uchun)
 const app = express();
+
+// Render uchun port
 const PORT = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send('Bot is running...'));
+app.listen(PORT, () => console.log(`Port: ${PORT}`));
 
-app.get('/', (req, res) => res.send('Bot status: ONLINE ✅'));
-app.listen(PORT, () => console.log(`🌐 Server running on port ${PORT}`));
-
-// Start buyrug'i
-bot.start((ctx) => {
-    ctx.reply('🎬 Video havolasini yuboring (YouTube, TikTok, Instagram).');
-});
+bot.start((ctx) => ctx.reply('Video linkini yuboring!'));
 
 bot.on('text', async (ctx) => {
     const url = ctx.message.text;
-    if (!url.startsWith('http')) return ctx.reply('❗ Iltimos, havola yuboring.');
+    if (!url.startsWith('http')) return;
 
-    const tempPath = os.tmpdir();
-    const fileName = `video_${Date.now()}.mp4`;
-    const outputPath = path.join(tempPath, fileName);
-    
-    let loadingMsg;
+    const outputPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
+    const loading = await ctx.reply('⏳ Jarayon boshlandi...');
+
     try {
-        loadingMsg = await ctx.reply('⏳ Yuklab olinmoqda...');
-
-        // MUHIM: yt-dlp parametrlari
+        // MUHIM: Bu sozlamalar videoni kichikroq formatda (Telegram ko'tara oladigan) yuklaydi
         await ytdlp(url, {
             output: outputPath,
-            format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', // Eng yaxshi sifat, lekin MP4
+            format: 'best[ext=mp4]/best', // Faqat tayyor MP4 qidiradi (birlashtirish shart emas)
             noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true,
-            addHeader: ['referer:youtube.com', 'user-agent:googlebot']
+            maxFilesize: '45M', // 50MB dan oshib ketmasligi uchun
         });
 
-        // Video hajmini tekshirish (Telegram 50MB gacha ruxsat beradi oddiy botlarga)
-        const stats = fs.statSync(outputPath);
-        const fileSizeInBytes = stats.size;
-        const fileSizeInMegabytes = fileSizeInBytes / (1024 * 1024);
-
-        if (fileSizeInMegabytes > 50) {
-            await ctx.reply('❌ Video hajmi juda katta (50MB dan ko‘p). Telegram bot limiti tufayli yuborib bo‘lmaydi.');
-        } else {
+        if (fs.existsSync(outputPath)) {
             await ctx.replyWithVideo({ source: outputPath });
+            fs.unlinkSync(outputPath);
+        } else {
+            throw new Error('Fayl yaratilmadi');
         }
 
     } catch (error) {
-        console.error('Download Error:', error);
-        await ctx.reply('❌ Yuklashda xatolik yuz berdi. Havola noto‘g‘ri yoki video himoyalangan.');
+        console.error('XATO:', error.message);
+        ctx.reply(`❌ Xatolik: Video juda katta yoki bu saytdan yuklab bo'lmaydi.`);
     } finally {
-        // Faylni o'chirish (Xatolik bo'lsa ham bo'lmasa ham)
-        if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath);
-        }
-        if (loadingMsg) {
-            ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
-        }
+        ctx.telegram.deleteMessage(ctx.chat.id, loading.message_id).catch(() => {});
     }
 });
 
-// Xatoliklarni ushlash
-bot.catch((err) => console.error('Bot error:', err));
-
 bot.launch();
-console.log('✅ Bot ishga tushdi.');
